@@ -14,12 +14,24 @@ def data(n):
     return count
 
 
-@app.route('/find-digits', methods=['POST'])
+# @app.route('/find-digits', methods=['POST'])
+# def handler():
+#     lst = []
+#     req = request.get_json()['check']
+#     for x in range(len(req)):
+#         lst.append(str(data(req[x])))
+#     return {'result': lst} 
+
+# http://127.0.0.1:5000/find-digits
+
+@app.route('/find-digits-next', methods=['POST'])
 def handler():
-    lst = []
     req = request.get_json()['check']
     for x in range(len(req)):
-        lst.append(str(data(req[x])))
-    return {'result': lst} 
-
-# (on working new task for this)
+        var_output = { 
+            'input':req[x],
+            'output':str(data(req[x]))
+        }
+    return {
+        'result':(var_output)
+    }
