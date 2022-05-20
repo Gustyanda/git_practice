@@ -22,4 +22,4 @@ def handler():
         lst.append(str(data(req[x])))
     return {'result': lst} 
 
-# (on working new task)
+# (on working new task for this)
