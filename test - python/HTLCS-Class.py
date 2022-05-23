@@ -65,3 +65,33 @@ class time:
 t1 = time(5,30,25)
 t2 = time(6,10,30)
 time.data(t1,t2)
+
+
+
+#----- build update data variable
+class Rocket:
+    def __init__(self, altitude):
+        self.altitude = altitude
+    
+    def up(self, alt_up):
+        self.altitude = self.altitude + alt_up
+
+    def down(self, alt_down):
+        self.altitude = self.altitude - alt_down
+
+    def position(self):
+        print(self.altitude)
+
+
+r1 = Rocket(altitude=0)
+r1.up(10)
+r1.down(20)
+r1.position()
+
+r1.up(100)
+r1.down(70)
+r1.position()
+
+r1.up(200)
+r1.down(0)
+r1.position()
