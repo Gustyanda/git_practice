@@ -1,9 +1,7 @@
 from email.policy import default
-from flask import Flask, request, jsonify, request_started
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import relationship
 import uuid, base64, requests
-
 app = Flask(__name__)
 db = SQLAlchemy(app)
 
@@ -388,5 +386,3 @@ def delete_author(id):
 # # create table default
 # db.create_all()
 # db.session.commit()
-
-
