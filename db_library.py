@@ -50,17 +50,16 @@ class Author(db.Model):
     def __repr__(self):
         return f'Author <{self.name}>'
 
-# class User(db.Model):
-#     id = db.Column(db.Integer, primary_key=True, index=True)
-#     name = db.Column(db.String(30), nullable=False)
-#     username = db.Column(db.String(10), nullable=False, unique=True)
-#     password = db.Column(db.String(10), nullable=False,unique=True)
-#     public_id = db.Column(db.String, nullable=False)
-#     is_admin = db.Column(db.Boolean, default=False)
-#     rents = db.relationship('User', backref='pinjam', lazy='dynamic')
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True, index=True)
+    name = db.Column(db.String(30), nullable=False)
+    username = db.Column(db.String(10), nullable=False, unique=True)
+    password = db.Column(db.String(10), nullable=False,unique=True)
+    is_admin = db.Column(db.Boolean, default=False)
+    # rents = db.relationship('User', backref='pinjam', lazy='dynamic')
 
-#     def __repr__(self):
-#         return f'User <{self.username}>'
+    def __repr__(self):
+        return f'User <{self.username}>'
 
 # class Rent(db.Model):
 #     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -72,7 +71,7 @@ class Author(db.Model):
 #     books = db.relationship('Rent', backref='buku', lazy='dynamic')
  
 #     def __repr__(self):
-#         return f'Rent <{self.date_rent}>'
+#         return f'Rent <{self.date_rent},{self.date_return}>'
 
 
 
@@ -84,6 +83,7 @@ def home():
     return {
         'message':'WELCOME TO OUR BOOK STORE'
     }
+
 
 
 
@@ -100,6 +100,23 @@ def create_author_book():
     return {
         "message" : "success"
     },201
+
+@app.route('/author_books') # get author_book data
+def get_author_book():
+    return jsonify([
+        { 
+            'id': book.public_id, 'title': book.title,
+            'category': {
+                'tag': book.categories.tag,
+            },
+            'author' : [
+                x.name
+                for x in book.penulis
+            ]
+        } for book in Book.query.all()
+    ])
+
+
 
 
 # # path Category
@@ -200,20 +217,7 @@ def get_book(id):
         }        
     })
 
-@app.route('/books/author') # get author_book data
-def get_author_book():
-    return jsonify([
-        { 
-            'id': book.public_id, 'title': book.title,
-            'category': {
-                'tag': book.categories.tag,
-            },
-            'author' : [
-                x.name
-                for x in book.penulis
-            ]
-        } for book in Book.query.all()
-    ])
+
 
 
 
@@ -301,6 +305,7 @@ def delete_book(id):
 
 
 
+
 # # path Author
 @app.route('/authors')
 def get_author():
@@ -370,6 +375,51 @@ def delete_author(id):
     return {
         'success': 'Data successfully delete'
     }
+
+
+
+
+# # authorization
+def is_authorization(auth):
+    if auth == None:
+        return {
+            'message': 'Unauthorized'
+        }
+    encode_var = base64.b64decode(auth[6:])
+    string_var = encode_var.decode('ascii')
+    lst = string_var.split(':')
+    username = lst[0]
+    password = lst[1]
+    usernames = User.username
+    passwords = User.password
+    if username == usernames and password == passwords:
+        return True
+    return False
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    data = request.get_json()
+    if 'name' not in data:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'name required'
+        }), 400
+    if len(data['username']) > 10 or len(data['password']) > 10:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'must contain 10 character'
+        }), 400
+    u = User(
+        name=data['name'],
+        username=data['username'],
+        password=data['password'],
+        is_admin=data.get('is admin', False)
+    )
+    db.session.add(u)
+    db.session.commit()
+    return jsonify ({
+        'message': 'create user successfully'
+    }), 201
 
 
 
