@@ -95,3 +95,45 @@ r1.position()
 r1.up(200)
 r1.down(0)
 r1.position()
+
+
+
+#----- build up function phone using class
+class phone:
+    def __init__(self, battery):
+        self.battery = battery
+    
+    def charge(self, charge):
+        self.update_battery(2 * charge)
+
+    def call(self, call):
+        self.update_battery(-1 * call)
+
+    def sms(self, sms):
+        self.update_battery(-1 * ((sms)/100))
+
+    def play(self, play):
+        self.update_battery(-5 * play)
+
+    def update_battery(self, change):
+        self.battery = self.battery + change
+        if self.battery < 0:
+            self.battery = 0
+        elif self.battery > 100:
+            self.battery = 100
+
+
+    def data(self):
+        print(str(self.battery) + ' % ')
+
+bt = phone(battery=0)
+bt.charge(120)
+bt.data()
+bt.call(30)
+bt.data()
+bt.sms(1000)
+bt.data()
+bt.charge(30)
+bt.data()
+bt.play(30)
+bt.data()
