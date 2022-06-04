@@ -87,8 +87,37 @@ def home():
 
 
 
+# # authorization
+@app.route('/login', methods=['GET', 'POST'])
+def auth():
+    auth_header = request.headers.get('Authorization')
+    encode_var = base64.b64decode(auth_header[6:])
+    string_var = encode_var.decode('ascii')
+    lst = string_var.split(':')
+    users = lst[0]
+    passes = lst[1]
+    usernames = User.query.filter_by(username=users).first()
+    passwords = User.query.filter_by(password=passes).first()
+    if (usernames != None) and (passwords != None):
+        return 'True' # expected output in end point
+    else:
+        return 'False'
+
+
+# @app.route('/jeprut', methods=['GET'])
+# def handler():
+#     auth_header = request.headers.get('Authorization')
+#     allow = is_authorization(auth_header)
+#     if allow == True:
+#         return create_author()
+#     elif allow == False:
+#         return {
+#             'message': 'not allowed'
+#         }
+
+
 # # path author_book
-@app.route('/author_books' , methods=['POST'])
+@app.route('/author_books', methods=['POST'])
 def create_author_book():
     data = request.get_json()
     book = Book.query.filter_by(id=data['book_id']).first_or_404()
@@ -282,9 +311,8 @@ def update_book(id):
         }, 400
     book = Book.query.filter_by(public_id=id).first_or_404()
     book.title = data.get('title', book.title)
-    if 'title' in data or 'release' in data:
-        book.title = data['title'],
-        book.release = data['release']
+    if 'categories_id' in data:
+        book.categories_id = data['categories_id']
     db.session.commit()
     return {
         'id': book.public_id, 'title': book.title, 'release': book.release,
@@ -379,23 +407,7 @@ def delete_author(id):
 
 
 
-# # authorization
-def is_authorization(auth):
-    if auth == None:
-        return {
-            'message': 'Unauthorized'
-        }
-    encode_var = base64.b64decode(auth[6:])
-    string_var = encode_var.decode('ascii')
-    lst = string_var.split(':')
-    username = lst[0]
-    password = lst[1]
-    usernames = User.username
-    passwords = User.password
-    if username == usernames and password == passwords:
-        return True
-    return False
-
+# # path User
 @app.route('/users', methods=['POST'])
 def create_user():
     data = request.get_json()
@@ -420,6 +432,15 @@ def create_user():
     return jsonify ({
         'message': 'create user successfully'
     }), 201
+
+
+
+
+
+
+
+
+
 
 
 
