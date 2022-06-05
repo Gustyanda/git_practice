@@ -1,4 +1,4 @@
-from email.policy import default
+from functools import wraps
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import uuid, base64, requests
@@ -25,8 +25,8 @@ class Category(db.Model):
     public_id = db.Column(db.String, nullable=False)
     books = db.relationship('Book', backref='kategori', lazy='dynamic')
 
-    def __repr__(self):
-        return f'Category <{self.tag}>'
+    # def __repr__(self):
+    #     return f'Category <{self.tag}>'
 
 class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -37,8 +37,8 @@ class Book(db.Model):
     categories = db.relationship('Category', backref='buku')
     auth_book = db.relationship('Author', secondary='author_book', backref='buku')
 
-    def __repr__(self):
-        return f'Book <{self.title}>'
+    # def __repr__(self):
+    #     return f'Book <{self.title}>'
 
 class Author(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -47,19 +47,20 @@ class Author(db.Model):
     public_id = db.Column(db.String, nullable=False)
     auth_author = db.relationship('Book', secondary='author_book', backref='penulis')
 
-    def __repr__(self):
-        return f'Author <{self.name}>'
+    # def __repr__(self):
+    #     return f'Author <{self.name}>'
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     name = db.Column(db.String(30), nullable=False)
     username = db.Column(db.String(10), nullable=False, unique=True)
-    password = db.Column(db.String(10), nullable=False,unique=True)
-    is_admin = db.Column(db.Boolean, default=False)
+    password = db.Column(db.String(10), nullable=False, unique=True)
+    admin = db.Column(db.Boolean)
+    public_id = db.Column(db.String, nullable=False)
     # rents = db.relationship('User', backref='pinjam', lazy='dynamic')
 
-    def __repr__(self):
-        return f'User <{self.username}>'
+#     # def __repr__(self):
+#     #     return f'User <{self.username}>'
 
 # class Rent(db.Model):
 #     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -76,44 +77,120 @@ class User(db.Model):
 
 
 
+# # authorization
+# @app.route('/login', methods=['GET'])
+def get_auth(auth):
+    # if auth == None:
+    #     return False
+    # auth = request.headers.get('Authorization')
+    encode_var = base64.b64decode(auth[6:])
+    string_var = encode_var.decode('ascii')
+    lst = string_var.split(':')
+    users = lst[0]
+    passes = lst[1]
+    user = User.query.filter_by(username=users).filter_by(password=passes).first()
+    if not user:
+        return {
+            'message': 'None user in database'
+        }
+    elif user.admin is True:
+        return 'True'
+    elif not user.admin:
+        return 'False'
+
+
+
+
+# def token_required(f):
+#     @wraps(f)
+#     def decorated(*args, **kwargs):
+#         token = None
+
+#         if 'x-access-token' in request.headers:
+#             token = request.headers['x-access-token']
+        
+#         if not token:
+#             return jsonify ({
+#                 'message': 'Token is missing'
+#             }), 401
+
+#         try:
+#             data = jwt.decode(token, app.config['SECRET KEY'])
+#             current_user = User.query.filter_by(public_id=data['public_id']).first()
+
+#         except:
+#             return jsonify({
+#                 'message': 'Token invalid'
+#             }), 401
+        
+#         return f(current_user, *args, **kwargs)
+    
+#     return decorated
+        
+
+        
+
+
+
 
 # # path home
 @app.route('/')
 def home():
     return {
-        'message':'WELCOME TO OUR BOOK STORE'
+        'message':'WELCOME TO OUR BOOK LIBRARY'
     }
 
 
 
 
-# # authorization
-@app.route('/login', methods=['GET', 'POST'])
-def auth():
-    auth_header = request.headers.get('Authorization')
-    encode_var = base64.b64decode(auth_header[6:])
-    string_var = encode_var.decode('ascii')
-    lst = string_var.split(':')
-    users = lst[0]
-    passes = lst[1]
-    usernames = User.query.filter_by(username=users).first()
-    passwords = User.query.filter_by(password=passes).first()
-    if (usernames != None) and (passwords != None):
-        return 'True' # expected output in end point
+# # path User
+@app.route('/users', methods=['GET'])
+def get_user():
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        return jsonify([
+            {
+            'id': user.public_id,
+            'name': user.name,
+            'username': user.username,
+            'password': user.password
+            } for user in User.query.all()
+        ]) 
+
     else:
-        return 'False'
+        return {
+            'message': 'Access denied'
+        }, 401
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    data = request.get_json()
+    if 'name' not in data:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'name required'
+        }), 400
+    if len(data['username']) > 10 and len(data['password']) > 10:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'must contain 10 character'
+        }), 400
+    u = User(
+        name=data['name'],
+        username=data['username'],
+        password=data['password'],
+        admin=data.get('admin', False),
+        public_id=str(uuid.uuid4())
+    )
+
+    db.session.add(u)
+    db.session.commit()
+    return jsonify ({
+        'message': 'create user successfully'
+    }), 201
 
 
-# @app.route('/jeprut', methods=['GET'])
-# def handler():
-#     auth_header = request.headers.get('Authorization')
-#     allow = is_authorization(auth_header)
-#     if allow == True:
-#         return create_author()
-#     elif allow == False:
-#         return {
-#             'message': 'not allowed'
-#         }
 
 
 # # path author_book
@@ -407,31 +484,7 @@ def delete_author(id):
 
 
 
-# # path User
-@app.route('/users', methods=['POST'])
-def create_user():
-    data = request.get_json()
-    if 'name' not in data:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'name required'
-        }), 400
-    if len(data['username']) > 10 or len(data['password']) > 10:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'must contain 10 character'
-        }), 400
-    u = User(
-        name=data['name'],
-        username=data['username'],
-        password=data['password'],
-        is_admin=data.get('is admin', False)
-    )
-    db.session.add(u)
-    db.session.commit()
-    return jsonify ({
-        'message': 'create user successfully'
-    }), 201
+
 
 
 
