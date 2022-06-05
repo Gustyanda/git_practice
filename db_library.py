@@ -77,26 +77,7 @@ class User(db.Model):
 
 
 
-# # authorization
-# @app.route('/login', methods=['GET'])
-def get_auth(auth):
-    # if auth == None:
-    #     return False
-    # auth = request.headers.get('Authorization')
-    encode_var = base64.b64decode(auth[6:])
-    string_var = encode_var.decode('ascii')
-    lst = string_var.split(':')
-    users = lst[0]
-    passes = lst[1]
-    user = User.query.filter_by(username=users).filter_by(password=passes).first()
-    if not user:
-        return {
-            'message': 'None user in database'
-        }
-    elif user.admin is True:
-        return 'True'
-    elif not user.admin:
-        return 'False'
+
 
 
 
@@ -128,13 +109,28 @@ def get_auth(auth):
 #     return decorated
         
 
-        
+# # authorization
+def get_auth(auth):
+    encode_var = base64.b64decode(auth[6:])
+    string_var = encode_var.decode('ascii')
+    lst = string_var.split(':')
+    users = lst[0]
+    passes = lst[1]
+    user = User.query.filter_by(username=users).filter_by(password=passes).first()
+    if not user:
+        return {
+            'message': 'None user in database'
+        }
+    elif user.admin is True:
+        return 'True'
+    elif not user.admin:
+        return 'False'        
 
 
 
 
 # # path home
-@app.route('/')
+@app.route('/home')
 def home():
     return {
         'message':'WELCOME TO OUR BOOK LIBRARY'
@@ -165,48 +161,43 @@ def get_user():
 
 @app.route('/users', methods=['POST'])
 def create_user():
-    data = request.get_json()
-    if 'name' not in data:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'name required'
-        }), 400
-    if len(data['username']) > 10 and len(data['password']) > 10:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'must contain 10 character'
-        }), 400
-    u = User(
-        name=data['name'],
-        username=data['username'],
-        password=data['password'],
-        admin=data.get('admin', False),
-        public_id=str(uuid.uuid4())
-    )
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        if 'name' not in data:
+            return jsonify ({
+                'error': 'Bad Request',
+                'message': 'name required'
+            }), 400
+        if len(data['username']) > 10 and len(data['password']) > 10:
+            return jsonify ({
+                'error': 'Bad Request',
+                'message': 'must contain 10 character'
+            }), 400
+        u = User(
+            name=data['name'],
+            username=data['username'],
+            password=data['password'],
+            admin=data.get('admin'),
+            public_id=str(uuid.uuid4())
+        )
 
-    db.session.add(u)
-    db.session.commit()
-    return jsonify ({
-        'message': 'create user successfully'
-    }), 201
+        db.session.add(u)
+        db.session.commit()
+        return jsonify ({
+            'message': 'create user successfully'
+        }), 201
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
 
 # # path author_book
-@app.route('/author_books', methods=['POST'])
-def create_author_book():
-    data = request.get_json()
-    book = Book.query.filter_by(id=data['book_id']).first_or_404()
-    author = Author.query.filter_by(id=data['author_id']).first_or_404()
-    book.auth_book.append(author)
-    db.session.add(book)
-    db.session.commit()
-
-    return {
-        "message" : "success"
-    },201
-
 @app.route('/author_books') # get author_book data
 def get_author_book():
     return jsonify([
@@ -221,6 +212,27 @@ def get_author_book():
             ]
         } for book in Book.query.all()
     ])
+
+@app.route('/author_books', methods=['POST'])
+def create_author_book():
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        book = Book.query.filter_by(id=data['book_id']).first_or_404()
+        author = Author.query.filter_by(id=data['author_id']).first_or_404()
+        book.auth_book.append(author)
+        db.session.add(book)
+        db.session.commit()
+
+        return {
+            "message" : "success"
+        },201
+    
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
@@ -245,56 +257,80 @@ def get_category(id):
 # path query for insert,update,delete for category
 @app.route('/categories', methods=['POST'])
 def create_category():
-    data = request.get_json()
-    if not 'tag' in data or not 'description' in data:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'There is no input'
-        }), 400
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        if not 'tag' in data or not 'description' in data:
+            return jsonify ({
+                'error': 'Bad Request',
+                'message': 'There is no input'
+            }), 400
 
-    if len(data['tag']) == 0 or len(data['description']) == 0:
-        return jsonify({
-            'error': 'Bad Request',
-            'message': 'tag and description must fill'
-        }), 400
-    
-    c = Category(
-        tag = data['tag'],
-        description = data['description'],
-        public_id = str(uuid.uuid4())
-    )
+        if len(data['tag']) == 0 or len(data['description']) == 0:
+            return jsonify({
+                'error': 'Bad Request',
+                'message': 'tag and description must fill'
+            }), 400
+        
+        c = Category(
+            tag = data['tag'],
+            description = data['description'],
+            public_id = str(uuid.uuid4())
+        )
 
-    db.session.add(c)
-    db.session.commit()
-    return {
-        'id': c.public_id, 'tag': c.tag, 'description': c.description
-    }, 201
+        db.session.add(c)
+        db.session.commit()
+        return {
+            'id': c.public_id, 'tag': c.tag, 'description': c.description
+        }, 201
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 @app.route('/categories/<id>/', methods=['PUT'])
 def update_category(id):
-    data = request.get_json()
-    if 'tag' not in data:
-        return {
-            'error': 'Bad Request',
-            'message': 'Tag needs'
-        }, 400
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        if 'tag' not in data:
+            return {
+                'error': 'Bad Request',
+                'message': 'Tag needs'
+            }, 400
 
-    category = Category.query.filter_by(public_id=id).first_or_404()
-    category.tag = data['tag']
-    category.description = data['description']
-    db.session.commit()
-    return jsonify ({
-        'id': category.public_id, 'tag': category.tag, 'description':category.description
-    })
+        category = Category.query.filter_by(public_id=id).first_or_404()
+        category.tag = data['tag']
+        category.description = data['description']
+        db.session.commit()
+        return jsonify ({
+            'id': category.public_id, 'tag': category.tag, 'description':category.description
+        })
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 @app.route('/categories/<id>/', methods=['DELETE'])
 def delete_category(id):
-    category = Category.query.filter_by(public_id=id).first_or_404()
-    db.session.delete(category)
-    db.session.commit()
-    return {
-        'success': 'Data successfully delete'
-    }
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        category = Category.query.filter_by(public_id=id).first_or_404()
+        db.session.delete(category)
+        db.session.commit()
+        return {
+            'success': 'Data successfully delete'
+        }
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
@@ -323,50 +359,54 @@ def get_book(id):
         }        
     })
 
-
-
-
-
 # path query for insert,update,delete for book
 @app.route('/books', methods=['POST'])
 def create_book():
-    data = request.get_json()
-    if not 'title' in data or not 'release' in data:
-        return jsonify({
-            'error': 'Bad Request',
-            'message': 'There is no input' 
-        }), 400
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        if not 'title' in data or not 'release' in data:
+            return jsonify({
+                'error': 'Bad Request',
+                'message': 'There is no input' 
+            }), 400
 
-    if len(data['title']) == 0 or len(data['release']) == 0:
-        return jsonify({
-            'error': 'Bad Request',
-            'message': 'title and release must fill'
-        }), 400
+        if len(data['title']) == 0 or len(data['release']) == 0:
+            return jsonify({
+                'error': 'Bad Request',
+                'message': 'title and release must fill'
+            }), 400
 
-    category = Category.query.filter_by(tag=data['tag']).first()
-    if not category:
+        category = Category.query.filter_by(tag=data['tag']).first()
+        if not category:
+            return {
+                'error': 'Bad Request',
+                'message': 'Invalid Tag' 
+            }
+        book = Book(
+            title = data['title'],
+            release = data['release'],
+            categories_id = category.id,
+            public_id = str(uuid.uuid4())
+        )
+        db.session.add(book)
+        db.session.commit()
         return {
-            'error': 'Bad Request',
-            'message': 'Invalid Tag' 
-        }
-    book = Book(
-        title = data['title'],
-        release = data['release'],
-        categories_id = category.id,
-        public_id = str(uuid.uuid4())
-    )
-    db.session.add(book)
-    db.session.commit()
-    return {
-        'id': book.public_id, 'title': book.title, 'release': book.release,
-        'kategori':{
-            'tag': book.kategori.tag,
-            'description': book.kategori.description            
-        }
-    }, 201
+            'id': book.public_id, 'title': book.title, 'release': book.release,
+            'kategori':{
+                'tag': book.kategori.tag,
+                'description': book.kategori.description            
+            }
+        }, 201
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401        
 
 @app.route('/books/tag', methods=['POST']) # get data tag
-def get_romance():
+def get_book_tag():
     data = request.get_json()
     categories = Category.query.filter_by(tag=data['tag']).first_or_404()
     b = []
@@ -378,35 +418,51 @@ def get_romance():
 
 @app.route('/books/<id>/', methods=['PUT'])
 def update_book(id):
-    data = request.get_json()
-    print(data)
-    print('title' in data)
-    if not 'title' in data:
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':    
+        data = request.get_json()
+        print(data)
+        print('title' in data)
+        if not 'title' in data:
+            return {
+                'error': 'Bad Request',
+                'message': 'Title needs'
+            }, 400
+        book = Book.query.filter_by(public_id=id).first_or_404()
+        book.title = data.get('title', book.title)
+        if 'categories_id' in data:
+            book.categories_id = data['categories_id']
+        db.session.commit()
         return {
-            'error': 'Bad Request',
-            'message': 'Title needs'
-        }, 400
-    book = Book.query.filter_by(public_id=id).first_or_404()
-    book.title = data.get('title', book.title)
-    if 'categories_id' in data:
-        book.categories_id = data['categories_id']
-    db.session.commit()
-    return {
-        'id': book.public_id, 'title': book.title, 'release': book.release,
-        'kategori':{
-            'tag': book.kategori.tag,
-            'description': book.kategori.description            
-        }
-    }, 201
+            'id': book.public_id, 'title': book.title, 'release': book.release,
+            'kategori':{
+                'tag': book.kategori.tag,
+                'description': book.kategori.description            
+            }
+        }, 201
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 @app.route('/books/<id>/', methods=['DELETE'])
 def delete_book(id):
-    book = Book.query.filter_by(public_id=id).first_or_404()
-    db.session.delete(book)
-    db.session.commit()
-    return {
-        'success': 'Data successfully delete'
-    }
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':    
+        book = Book.query.filter_by(public_id=id).first_or_404()
+        db.session.delete(book)
+        db.session.commit()
+        return {
+            'success': 'Data successfully delete'
+        }
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
@@ -430,61 +486,87 @@ def get_authors(id):
 # path query for insert,update,delete for author
 @app.route('/authors', methods=['POST'])
 def create_author():
-    data = request.get_json()
-    if not 'name' in data or not 'bod' in data:
-        return jsonify({
-            'error': 'Bad Request',
-            'message': 'There is no input'
-        }), 400
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':    
+        data = request.get_json()
+        if not 'name' in data or not 'bod' in data:
+            return jsonify({
+                'error': 'Bad Request',
+                'message': 'There is no input'
+            }), 400
 
-    if len(data['name']) == 0 or len(data['bod']) == 0:
-        return jsonify ({
-            'error': 'Bad Request',
-            'message': 'name and bod must fill'
-        }), 400
+        if len(data['name']) == 0 or len(data['bod']) == 0:
+            return jsonify ({
+                'error': 'Bad Request',
+                'message': 'name and bod must fill'
+            }), 400
 
-    a = Author(
-        name = data['name'],
-        bod = data['bod'],
-        public_id = str(uuid.uuid4())
-    )
+        a = Author(
+            name = data['name'],
+            bod = data['bod'],
+            public_id = str(uuid.uuid4())
+        )
 
-    db.session.add(a)
-    db.session.commit()
-    return {
-            'id': a.public_id, 'name': a.name, 'bod': a.bod             
-    }, 201
+        db.session.add(a)
+        db.session.commit()
+        return {
+                'id': a.public_id, 'name': a.name, 'bod': a.bod             
+        }, 201
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 @app.route('/authors/<id>/', methods=['PUT'])
 def update_author(id):
-    data = request.get_json()
-    if 'name' not in data:
-        return {
-            'error': 'Bad Request',
-            'message': 'Name needs'
-        }, 400
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':    
+        data = request.get_json()
+        if 'name' not in data:
+            return {
+                'error': 'Bad Request',
+                'message': 'Name needs'
+            }, 400
 
-    author = Author.query.filter_by(public_id=id).first_or_404()
-    author.name = data['name']
-    author.bod = data['bod']
-    db.session.commit()
-    return jsonify ({
-        'id': author.public_id, 'name': author.name, 'bod':author.bod
-    })
+        author = Author.query.filter_by(public_id=id).first_or_404()
+        author.name = data['name']
+        author.bod = data['bod']
+        db.session.commit()
+        return jsonify ({
+            'id': author.public_id, 'name': author.name, 'bod':author.bod
+        })
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 @app.route('/authors/<id>/', methods=['DELETE'])
 def delete_author(id):
-    author = Author.query.filter_by(public_id=id).first_or_404()
-    db.session.delete(author)
-    db.session.commit()
-    return {
-        'success': 'Data successfully delete'
-    }
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':    
+        author = Author.query.filter_by(public_id=id).first_or_404()
+        db.session.delete(author)
+        db.session.commit()
+        return {
+            'success': 'Data successfully delete'
+        }
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
 
-
+@app.route('/rents')
+def get_rent():
+    
 
 
 
