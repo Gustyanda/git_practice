@@ -1,4 +1,5 @@
 from functools import wraps
+import json
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import uuid, base64, requests
@@ -25,9 +26,6 @@ class Category(db.Model):
     public_id = db.Column(db.String, nullable=False)
     books = db.relationship('Book', backref='kategori', lazy='dynamic')
 
-    # def __repr__(self):
-    #     return f'Category <{self.tag}>'
-
 class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     title = db.Column(db.String(30), nullable=False)
@@ -35,20 +33,15 @@ class Book(db.Model):
     public_id = db.Column(db.String, nullable=False)
     categories_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
     categories = db.relationship('Category', backref='buku')
-    auth_book = db.relationship('Author', secondary='author_book', backref='buku')
+    auth_book = db.relationship('Author', backref='buku', secondary='author_book')
 
-    # def __repr__(self):
-    #     return f'Book <{self.title}>'
 
 class Author(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     name = db.Column(db.String(30), nullable=False)
     bod = db.Column(db.Date, nullable=False)
     public_id = db.Column(db.String, nullable=False)
-    auth_author = db.relationship('Book', secondary='author_book', backref='penulis')
-
-    # def __repr__(self):
-    #     return f'Author <{self.name}>'
+    auth_author = db.relationship('Book', backref='penulis', secondary='author_book')
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -57,22 +50,22 @@ class User(db.Model):
     password = db.Column(db.String(10), nullable=False, unique=True)
     admin = db.Column(db.Boolean)
     public_id = db.Column(db.String, nullable=False)
-    # rents = db.relationship('User', backref='pinjam', lazy='dynamic')
 
-#     # def __repr__(self):
-#     #     return f'User <{self.username}>'
+class Rent(db.Model):
+    id = db.Column(db.Integer, primary_key=True, index=True)
+    name = db.Column(db.String, nullable=False)
+    date_rent = db.Column(db.Date)
+    date_return = db.Column(db.Date)
+    public_id = db.Column(db.String, nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    book_id = db.Column(db.Integer, db.ForeignKey('book.id'), nullable=False)
+    book = db.relationship('Book', backref='rent', lazy=True)
 
-# class Rent(db.Model):
-#     id = db.Column(db.Integer, primary_key=True, index=True)
-#     date_rent = db.Column(db.Date, nullable=False)
-#     date_return = db.Column(db.Date, nullable=False)
-#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-#     admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-#     book_id = db.Column(db.Integer, db.ForeignKey('book.id'), nullable=False)
-#     books = db.relationship('Rent', backref='buku', lazy='dynamic')
  
-#     def __repr__(self):
-#         return f'Rent <{self.date_rent},{self.date_return}>'
+
+# # create table default
+# db.create_all()
+# db.session.commit()
 
 
 
@@ -82,34 +75,7 @@ class User(db.Model):
 
 
 
-# def token_required(f):
-#     @wraps(f)
-#     def decorated(*args, **kwargs):
-#         token = None
-
-#         if 'x-access-token' in request.headers:
-#             token = request.headers['x-access-token']
-        
-#         if not token:
-#             return jsonify ({
-#                 'message': 'Token is missing'
-#             }), 401
-
-#         try:
-#             data = jwt.decode(token, app.config['SECRET KEY'])
-#             current_user = User.query.filter_by(public_id=data['public_id']).first()
-
-#         except:
-#             return jsonify({
-#                 'message': 'Token invalid'
-#             }), 401
-        
-#         return f(current_user, *args, **kwargs)
-    
-#     return decorated
-        
-
-# # authorization
+# # authorization get_auth
 def get_auth(auth):
     encode_var = base64.b64decode(auth[6:])
     string_var = encode_var.decode('ascii')
@@ -126,6 +92,74 @@ def get_auth(auth):
     elif not user.admin:
         return 'False'        
 
+
+
+
+# # authorization auth_admin
+def auth_admin(auth):
+    base = base64.b64decode(auth[6:])
+    decode = base.decode("ascii")
+    lis = decode.split(':')
+    username = lis[0]
+
+    return username
+
+
+
+
+# # path rents
+@app.route('/rents', methods=['POST'])
+def create_rent():
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        for x in data['title']:
+            book = Book.query.filter_by(title=x).first()
+            if not book:
+                return jsonify({
+                    'error': 'Bad Request',
+                    'message': 'Title not given'
+                }), 400
+
+            admin = auth_admin(decode_var)
+            admin = User.query.filter_by(username=admin).first()
+            rent = Rent(
+                name=data['name'],
+                date_rent=data['date_rent'], 
+                date_return=data['date_return'],
+                book_id=book.id,
+                admin_id=admin.id,
+                public_id=str(uuid.uuid4())
+                )
+            db.session.add(rent)
+        db.session.commit()
+        return {
+            'message' :  'success'
+        }
+    
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
+
+@app.route('/rents/<id>', methods=['PUT'])
+def update_rent(id):
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        data = request.get_json()
+        rent = Rent.query.filter_by(public_id=id).first_or_404()
+        rent.date_return = data['date_return']
+        db.session.commit()
+        return {
+            'message': 'success'
+        }
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
 
 
 
@@ -161,38 +195,30 @@ def get_user():
 
 @app.route('/users', methods=['POST'])
 def create_user():
-    decode_var = request.headers.get('Authorization')
-    allow = get_auth(decode_var)
-    if allow == 'True':
-        data = request.get_json()
-        if 'name' not in data:
-            return jsonify ({
-                'error': 'Bad Request',
-                'message': 'name required'
-            }), 400
-        if len(data['username']) > 10 and len(data['password']) > 10:
-            return jsonify ({
-                'error': 'Bad Request',
-                'message': 'must contain 10 character'
-            }), 400
-        u = User(
-            name=data['name'],
-            username=data['username'],
-            password=data['password'],
-            admin=data.get('admin'),
-            public_id=str(uuid.uuid4())
+    data = request.get_json()
+    if 'name' not in data:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'name required'
+        }), 400
+    if len(data['username']) > 10 and len(data['password']) > 10:
+        return jsonify ({
+            'error': 'Bad Request',
+            'message': 'must contain 10 character'
+        }), 400
+    u = User(
+        name=data['name'],
+        username=data['username'],
+        password=data['password'],
+        admin=data.get('admin'),
+        public_id=str(uuid.uuid4())
         )
 
-        db.session.add(u)
-        db.session.commit()
-        return jsonify ({
-            'message': 'create user successfully'
-        }), 201
-
-    else:
-        return {
-            'message': 'Access denied'
-        }, 401
+    db.session.add(u)
+    db.session.commit()
+    return jsonify ({
+        'message': 'create user successfully'
+    }), 201
 
 
 
@@ -560,35 +586,3 @@ def delete_author(id):
         return {
             'message': 'Access denied'
         }, 401
-
-
-
-
-@app.route('/rents')
-def get_rent():
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # create table default
-# db.create_all()
-# db.session.commit()
