@@ -32,10 +32,10 @@ class Book(db.Model):
     release = db.Column(db.Date, nullable=False)
     public_id = db.Column(db.String, nullable=False)
     categories_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
+    quantity = db.Column(db.Integer)
     categories = db.relationship('Category', backref='buku')
     auth_book = db.relationship('Author', backref='buku', secondary='author_book')
     rents = db.relationship('Rent', backref='buku')
-
 
 class Author(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
@@ -72,9 +72,6 @@ class Rent(db.Model):
 
 
 
-
-
-
 # # authorization get_auth
 def get_auth(auth):
     encode_var = base64.b64decode(auth[6:])
@@ -91,9 +88,6 @@ def get_auth(auth):
         return 'True'
     elif not user.admin:
         return 'False'        
-
-
-
 
 # # authorization auth_admin
 def auth_admin(auth):
@@ -136,16 +130,17 @@ def create_rent():
     allow = get_auth(decode_var)
     if allow == 'True':
         data = request.get_json()
-        for x in data['title']:
-            book = Book.query.filter_by(title=x).first()
-            if not book:
-                return jsonify({
-                    'error': 'Bad Request',
-                    'message': 'Title not given'
+        for x in data['title']:   
+            book_ = Book.query.filter_by(title=x).first_or_404()
+            if book_.quantity == 0:
+                return jsonify ({
+                    'message': 'Book not available'
                 }), 400
 
-            admin = auth_admin(decode_var)
-            admin = User.query.filter_by(username=admin).first()
+        admin = auth_admin(decode_var)
+        admin = User.query.filter_by(username=admin).first()
+        for y in data['title']:
+            book = Book.query.filter_by(title=y).first()
             rent = Rent(
                 name=data['name'],
                 date_rent=data['date_rent'], 
@@ -153,11 +148,12 @@ def create_rent():
                 book_id=book.id,
                 admin_id=admin.id,
                 public_id=str(uuid.uuid4())
-                )
-            db.session.add(rent)
+            )
+            book.quantity -= 1
+        db.session.add(rent)
         db.session.commit()
         return {
-            'message' :  'success'
+            'message': 'success'
         }
     
     else:
@@ -172,7 +168,9 @@ def update_rent(id):
     if allow == 'True':
         data = request.get_json()
         rent = Rent.query.filter_by(public_id=id).first_or_404()
+        book = Book.query.filter_by(id=rent.book_id).first_or_404()
         rent.date_return = data['date_return']
+        book.quantity += 1
         db.session.commit()
         return {
             'message': 'success'
@@ -260,6 +258,10 @@ def get_author_book():
             ]
         } for book in Book.query.all()
     ])
+
+
+    # auth_author = db.relationship('Book', backref='penulis', secondary='author_book')
+
 
 @app.route('/author_books', methods=['POST'])
 def create_author_book():
@@ -388,7 +390,7 @@ def delete_category(id):
 def get_books():
     return jsonify([
         {
-            'id': book.public_id, 'title': book.title, 'release': book.release, 
+            'id': book.public_id, 'title': book.title, 'release': book.release, 'quantity': book.quantity,
             'ketegori' : {
                 'tag': book.kategori.tag,
                 'description': book.kategori.description
@@ -436,6 +438,7 @@ def create_book():
             title = data['title'],
             release = data['release'],
             categories_id = category.id,
+            quantity = data['quantity'],
             public_id = str(uuid.uuid4())
         )
         db.session.add(book)
@@ -479,11 +482,13 @@ def update_book(id):
             }, 400
         book = Book.query.filter_by(public_id=id).first_or_404()
         book.title = data.get('title', book.title)
+        book.release = data.get('release', book.release)
+        book.quantity = data.get('quantity', book.quantity)
         if 'categories_id' in data:
             book.categories_id = data['categories_id']
         db.session.commit()
         return {
-            'id': book.public_id, 'title': book.title, 'release': book.release,
+            'id': book.public_id, 'title': book.title, 'release': book.release, 'quantity': book.quantity,
             'kategori':{
                 'tag': book.kategori.tag,
                 'description': book.kategori.description            
