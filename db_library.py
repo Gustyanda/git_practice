@@ -34,6 +34,7 @@ class Book(db.Model):
     categories_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
     categories = db.relationship('Category', backref='buku')
     auth_book = db.relationship('Author', backref='buku', secondary='author_book')
+    rents = db.relationship('Rent', backref='buku')
 
 
 class Author(db.Model):
@@ -59,7 +60,6 @@ class Rent(db.Model):
     public_id = db.Column(db.String, nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     book_id = db.Column(db.Integer, db.ForeignKey('book.id'), nullable=False)
-    book = db.relationship('Book', backref='rent', lazy=True)
 
  
 
@@ -108,6 +108,28 @@ def auth_admin(auth):
 
 
 # # path rents
+@app.route('/rents', methods=['GET'])
+def get_rent():
+    decode_var = request.headers.get('Authorization')
+    allow = get_auth(decode_var)
+    if allow == 'True':
+        return jsonify([
+            {
+            'name': rent.name,
+            'date_rent': rent.date_rent,
+            'date_return': rent.date_return,
+            'buku': {
+                'title': rent.buku.title,
+                'release': rent.buku.release
+            }
+            } for rent in Rent.query.all()
+        ]) 
+
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401
+
 @app.route('/rents', methods=['POST'])
 def create_rent():
     decode_var = request.headers.get('Authorization')
