@@ -8,13 +8,12 @@ app.config['SECRET_KEY']='secret'
 app.config['SQLALCHEMY_DATABASE_URI']='postgresql://postgres:Kehidupan6@localhost:5432/db_course?sslmode=disable'
 # app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
-# study=db.Table('study',
-#     db.Column('category_id', db.Integer, db.ForeignKey('category.id'), nullable=False),
-#     db.Column('user_id', db.Integer, db.ForeignKey('user.id'), nullable=False),
-#     db.Column('instructor_id', db.Integer, db.ForeignKey('instructor.id'), nullable=False))
 
 
 
+instructor_course=db.Table('instructor_course',
+    db.Column('instructor_id', db.Integer, db.ForeignKey('instructor.id'), nullable=False),
+    db.Column('course_id', db.Integer, db.ForeignKey('course.id'), nullable=False))
 
 class Category(db.Model):
     id=db.Column(db.Integer, primary_key=True, index=True)
@@ -27,17 +26,18 @@ class Course(db.Model):
     public_id=db.Column(db.String, nullable=False)
     lesson=db.Column(db.String, nullable=False)
     categories_id=db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
+    categories_=db.relationship('Category', backref='courses')
+    associate_c=db.relationship('Instructor', backref='associate_c', secondary='instructor_course')
     enroll=db.relationship('Enroll', backref='course_')
-    # study_course1=db.relationship('Instructor', backref='course_1', secondary='study')
-    # study_course2=db.relationship('User', backref='course_2', secondary='study')
 
 class Instructor(db.Model):
     id=db.Column(db.Integer, primary_key=True, index=True)
     public_id=db.Column(db.String, nullable=False)
     coach=db.Column(db.String, nullable=False)
-    enroll=db.relationship('Enroll', backref='instructor_')
-    # study_instructor1=db.relationship('Course', backref='instructor_1', secondary='study')
-    # study_instructor2=db.relationship('User', backref='instructor_2', secondary='study')    
+    username=db.Column(db.String, nullable=False, unique=True)
+    password=db.Column(db.String, nullable=False, unique=True)
+    status=db.Column(db.Boolean)
+    associate_i=db.relationship('Course', backref='associate_i', secondary='instructor_course')
 
 class User(db.Model):
     id=db.Column(db.Integer, primary_key=True, index=True)
@@ -46,23 +46,21 @@ class User(db.Model):
     username=db.Column(db.String, nullable=False, unique=True)
     password=db.Column(db.String, nullable=False, unique=True)
     enroll=db.relationship('Enroll', backref='user_')
-    # course=db.relationship('Course', backref='user_1', secondary='study')
-    # study_user2=db.relationship('Instructor', backref='user_2', secondary='study')  
 
 class Enroll(db.Model):
     id=db.Column(db.Integer, primary_key=True, index=True)
     public_id=db.Column(db.String, nullable=False)
-    course_id=db.Column(db.Integer, db.ForeignKey('course.id'))
-    user_id=db.Column(db.Integer, db.ForeignKey('user.id'))
-    instructor_id=db.Column(db.Integer, db.ForeignKey('instructor.id'))
     status=db.Column(db.String)
+    user_id=db.Column(db.Integer, db.ForeignKey('user.id'))
+    course_id=db.Column(db.Integer, db.ForeignKey('course.id'))
+
 
 
 
 
 # --------------- create table default
-# db.create_all()
-# db.session.commit()
+db.create_all()
+db.session.commit()
 
 
 
@@ -79,6 +77,35 @@ def auth_user(auth):
     else:
         return 0
 
+# --------------- authorization for coach
+def auth_coach(auth):
+    encode = base64.b64decode(auth[6:])
+    str_encode = encode.decode('ascii')
+    lst = str_encode.split(':')
+    users = lst[0]
+    passes = lst[1]   
+    instructor = Instructor.query.filter_by(username=users).filter_by(password=passes).first()
+    if instructor:
+        return  str(instructor.public_id)
+    else:
+        return 0
+
+# --------------- authorization for coach admin
+def auth_coach_admin(auth):
+    encode = base64.b64decode(auth[6:])
+    str_encode = encode.decode('ascii')
+    lst = str_encode.split(':')
+    users = lst[0]
+    passes = lst[1]   
+    instructor = Instructor.query.filter_by(username=users).filter_by(password=passes).first()
+    if not instructor:
+        return {
+            'message': 'None user in database !' 
+        }
+    elif instructor.status is True:
+        return True
+    elif not instructor.status:
+        return False     
 
 
 
@@ -131,53 +158,52 @@ def get_course():
             'lesson':course.lesson,
             'categories':{
                 'tag': course.categories.tag
-            } 
+            },
+            'instructors':[
+                {
+                'coach': x.coach
+                    
+                } for x in course.associate_i
+            ]
         } for course in Course.query.all()
     ])
 
-@app.route('/course', methods=['POST'])
-def create_course():
-    data = request.get_json()
-    if len(data['lesson']) == 0:
+@app.route('/course/<id>', methods=['POST']) # authorization separated by public_id coach
+def create_course_id(id):
+    decode = request.headers.get('Authorization')
+    allow = auth_coach(decode)
+    if allow == id:
+        data = request.get_json()
+        if len(data['lesson']) == 0:
+            return {
+                'message': 'must fill lesson detail !'
+            }, 400
+
+        category = Category.query.filter_by(tag=data['tag']).first()
+        if not category:
+            return {
+                'message': 'tag needs !'
+            }, 400
+
+        c = Course(
+            public_id=str(uuid.uuid4()),
+            lesson=data['lesson'],
+            categories_id=category.id
+        )
+        db.session.add(c)
+        db.session.commit()
         return {
-            'message': 'must fill lesson detail !'
-        }, 400
-
-    category = Category.query.filter_by(tag=data['tag']).first()
-    if not category:
+            'message': 'lesson successfully create !'
+        }, 201
+    else:
         return {
-            'message': 'tag needs !'
-        }, 400
+            'message': 'un-authorized user is denied !'
+        }, 400        
 
-    c = Course(
-        public_id=str(uuid.uuid4()),
-        lesson=data['lesson'],
-        categories_id=category.id
-    )
-    db.session.add(c)
-    db.session.commit()
-    return {
-        'message': 'lesson successfully create !'
-    }, 201
-
-@app.route('/course/<id>', methods=['PUT'])
-def update_course(id):
-    data = request.get_json()
-    course = Course.query.filter_by(public_id=id).first_or_404()
-    category = Category.query.filter_by(tag=data['tag']).first_or_404()
-    course.lesson = data['lesson']
-    course.categories_id = category.id
-    db.session.commit()
-    return {
-            'lesson':course.lesson,
-            'categories':{
-                'tag': course.categories.tag
-        }
-    } 
+  
 
 
-
-
+# --------------- API - instructor
 @app.route('/instructor', methods=['GET'])
 def get_instructor():
     return jsonify([
@@ -186,38 +212,70 @@ def get_instructor():
         } for instructor in Instructor.query.all()
     ])
 
-@app.route('/instructor', methods=['POST'])
+@app.route('/instructor', methods=['POST'])  # authorization separated by admin coach
 def create_instructor():
-    data = request.get_json()
-    if len(data['coach']) == 0:
+    decode = request.headers.get('Authorization')
+    allow = auth_coach_admin(decode)
+    if allow == True:
+        data = request.get_json()
+        if len(data['coach']) == 0:
+            return {
+                'message': 'name instructor required !'
+            }, 400
+
+        i = Instructor(
+            public_id=str(uuid.uuid4()),
+            coach=data['coach'],
+            username=data['username'],
+            password=data['password'],
+            status=data['status']
+        )
+        db.session.add(i)
+        db.session.commit()
         return {
-            'message': 'name instructor required !'
+            'message': 'instructor successfully add !'
+        }, 201
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401  
+
+@app.route('/instructor/<id>', methods=['GET']) # authorization separated by public_id coach
+def get_instructor_id(id):
+    decode = request.headers.get('Authorization')
+    allow = auth_coach(decode)
+    if allow == id:
+        instructor = Instructor.query.filter_by(public_id=id).first_or_404()
+        return jsonify ({
+            'coach':instructor.coach, 'username':instructor.username, 'password':instructor.password, 'status':instructor.status
+        })
+    else:
+        return {
+            'message': 'un-authorized user is denied !'
         }, 400
 
-    i = Instructor(
-        public_id=str(uuid.uuid4()),
-        coach=data['coach'],
-        status=data['status']
-    )
-    db.session.add(i)
-    db.session.commit()
+@app.route('/instructor/<id>', methods=['PUT']) # authorization separated by public_id coach
+def update_instructor_id(id):
+    decode = request.headers.get('Authorization')
+    allow = auth_coach(decode)
+    if allow == id:
+        data = request.get_json()
+        instructor = Instructor.query.filter_by(public_id=id).first_or_404()
+        instructor.username = data['username']
+        instructor.password = data['password']
+        instructor.status = data['status']
+        db.session.commit()
+        return {
+                'message': 'data has been update !'
+            }
     return {
-        'message': 'instructor successfully add !'
-    }, 201
-
-@app.route('/instructor/<id>', methods=['PUT'])
-def update_instructor(id):
-    data = request.get_json()
-    instructor = Instructor.query.filter_by(public_id=id).first_or_404()
-    instructor.status = data['status']
-    db.session.commit()
-    return jsonify({
-        'coach':instructor.coach, 'status':instructor.status
-    })
+        'message': 'un-authorized user is denied !'
+    }, 400    
 
 
 
 
+# --------------- API - user
 @app.route('/user', methods=['GET'])
 def get_user():
     return jsonify ([
@@ -251,7 +309,7 @@ def create_user():
         'message': 'user successfully create !'
     }, 201
 
-@app.route('/user/<id>', methods=['GET']) # authorization separated by public_id
+@app.route('/user/<id>', methods=['GET']) # authorization separated by public_id user
 def get_user_id(id):
     decode = request.headers.get('Authorization')
     allow = auth_user(decode)
@@ -265,7 +323,7 @@ def get_user_id(id):
             'message': 'un-authorized user is denied !'
         }, 400
 
-@app.route('/user/<id>', methods=['PUT']) # authorization separated by public_id
+@app.route('/user/<id>', methods=['PUT']) # authorization separated by public_id user
 def update_user(id):
     decode = request.headers.get('Authorization')
     allow = auth_user(decode)
@@ -286,18 +344,64 @@ def update_user(id):
 
 
 
-# @app.route('/enroll/', methods=['GET'])
-# def get_enroll():
-#     return jsonify ([
-#         {
-#             'name': user.name,
-#             'course': {
+# --------------- API - instructor_course
+@app.route('/instructor_course', methods=['GET'])
+def get_instructor_course():
+    return jsonify([
+        { 
+            'lesson': course.lesson,
+            'category': {
+                'tag': course.categories_.tag,
+            },
+            'instructor' : [
+                x.coach
+                for x in course.associate_i
+            ]
+        } for course in Course.query.all()
+    ])
 
-#             }
-#         }
-#     ])
+@app.route('/instructor_course', methods=['POST'])  # authorization separated by admin coach
+def create_instructor_course():
+    decode = request.headers.get('Authorization')
+    allow = auth_coach_admin(decode)
+    if allow == True:
+        data = request.get_json()
+        course = Course.query.filter_by(id=data['course_id']).first()
+        instructor = Instructor.query.filter_by(id=data['instructor_id']).first()
+        course.associate_c.append(instructor)
+        db.session.add(course)
+        db.session.commit()
+        return {
+            "message" : "instructor for course has been assigned !"
+        },201
+    
+    else:
+        return {
+            'message': 'Access denied'
+        }, 401  
+  
 
-@app.route('/enroll/<id>', methods=['POST']) # authorization separated by public_id
+
+
+# --------------- API - enroll
+@app.route('/enroll/<id>', methods=['GET']) # authorization separated by public_id user
+def get_enroll(id):
+    decode = request.headers.get('Authorization')
+    allow = auth_user(decode)
+    if allow == id:    
+        return jsonify ([
+            {
+                'status': enroll.status,
+                'name': enroll.user_.name ,
+                'lesson': enroll.course_.lesson,
+                # 'instructor': enroll.instructor.coach
+            } for enroll in Enroll.query.all()
+        ])
+    return {
+        'message': 'Access denied'
+    }, 401
+
+@app.route('/enroll/<id>', methods=['POST']) # authorization separated by public_id user
 def create_enroll(id):
     decode = request.headers.get('Authorization')
     allow = auth_user(decode)
@@ -312,12 +416,12 @@ def create_enroll(id):
 
         user = User.query.filter_by(name=data['name']).first()
         course = Course.query.filter_by(lesson=data['lesson']).first()
-        instructor = Instructor.query.filter_by(coach=data['coach']).first()
+        # instructor = Instructor.query.filter_by(coach=data['coach']).first()
         e = Enroll(
             public_id=str(uuid.uuid4()),
             user_id=user.id,
             course_id=course.id,
-            instructor_id=instructor.id,
+            # instructor_id=instructor.id,
             status=data['status']
         )
         db.session.add(e)
@@ -331,7 +435,7 @@ def create_enroll(id):
             'message': 'un-authorized user is denied !'
         }, 400    
 
-@app.route('/enroll/<id>', methods=['PUT']) # authorization separated by public_id and course_id
+@app.route('/enroll/<id>', methods=['PUT']) # authorization separated by public_id user for status
 def update_enroll(id):
     decode = request.headers.get('Authorization')
     allow = auth_user(decode)
